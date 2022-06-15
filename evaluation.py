@@ -5,18 +5,17 @@
 # --------------------------------------------------------
 
 """
-    To use the code, users should to config detpath, annopath and imagesetfile
-    detpath is the path for 15 result files, for the format, you can refer to "http://captain.whu.edu.cn/DOTAweb/tasks.html"
-    search for PATH_TO_BE_CONFIGURED to config the paths
-    Note, the evaluation is on the large scale images
+  To use the code, users should to config detpath, annopath and imagesetfile
+  detpath is the path for 15 result files, for the format, you can refer to "http://captain.whu.edu.cn/DOTAweb/tasks.html"
+  search for PATH_TO_BE_CONFIGURED to config the paths
+  Note, the evaluation is on the large scale images
 """
 
 import sys
-#import xml.etree.ElementTree as ET
 import os
-#import cPickle
 import numpy as np
-#import matplotlib.pyplot as plt
+
+import utils
 
 def parse_gt(filename):
     objects = []
@@ -39,19 +38,28 @@ def parse_gt(filename):
             w = int(float(splitline[4])) - int(float(splitline[0]))
             h = int(float(splitline[5])) - int(float(splitline[1]))
             object_struct['area'] = w * h
-            #print('area:', object_struct['area'])
-            # if object_struct['area'] < (15 * 15):
-            #     #print('area:', object_struct['area'])
-            #     object_struct['difficult'] = 1
             objects.append(object_struct)
             
     return objects
 
 def voc_ap(rec, prec, use_07_metric=False):
-    """ ap = voc_ap(rec, prec, [use_07_metric])
+    """     
     Compute VOC AP given precision and recall.
-    If use_07_metric is true, uses the
-    VOC 07 11 point method (default:False).
+    
+    If **use_07_metric** is true, uses the VOC 07 11 point method.
+
+    Parameters
+    ----------
+    rec:  
+        recall
+    
+    prec: 
+        precsion
+
+    Return
+    ------
+    ap: 
+        average_precision
     """
     if use_07_metric:
         # 11 point metric
@@ -80,35 +88,38 @@ def voc_ap(rec, prec, use_07_metric=False):
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
     return ap
 
-def voc_eval(detlist,
-             annopath,
-             imagenames,
-             classname,
-            # cachedir,
-             ovthresh=0.5,
-             use_07_metric=False):
-    """rec, prec, ap = voc_eval(detpath,
-                                annopath,
-                                imagesetfile,
-                                classname,
-                                [ovthresh],
-                                [use_07_metric])
-    Top level function that does the PASCAL VOC evaluation.
-    detpath: Path to detections
-        detpath.format(classname) should produce the detection results file.
-    annopath: Path to annotations
-        annopath.format(imagename) should be the xml annotations file.
-    imagesetfile: Text file containing the list of images, one image per line.
-    classname: Category name (duh)
-    cachedir: Directory for caching the annotations
-    [ovthresh]: Overlap threshold (default = 0.5)
-    [use_07_metric]: Whether to use VOC07's 11 point AP computation
-        (default False)
+def voc_eval(detlist, annopath, imagenames, classname, ovthresh=0.5, use_07_metric=False):
     """
-    # assumes detections are in detpath.format(classname)
-    # assumes annotations are in annopath.format(imagename)
-    # assumes imagesetfile is a text file with each line an image name
-    # cachedir caches the annotations in a pickle file
+    Top level function that does the PASCAL VOC evaluation.
+
+    Parameters
+    ----------
+    detpath : str
+        Path to detections. detpath.format(classname) should produce the detection results file.
+
+    annopath : str
+        Path to annotations. annopath.format(imagename) should be the xml annotations file.
+
+    imagesetfile :
+        Text file containing the list of images, one image per line.
+    
+    classname : 
+        Category name (duh)
+    
+    ovthresh : float
+        Overlap threshold (default = 0.5)
+
+    use_07_metric : bool
+        Whether to use VOC07's 11 point AP computation (default False)
+    
+    Return
+    ------
+    rec : 
+
+    prec :
+    
+    ap :
+    """
 
     # first load gt
     #if not os.path.isdir(cachedir):
@@ -232,6 +243,17 @@ def voc_eval(detlist,
     return rec, prec, ap
 
 def readdet(detpath, imagenames, classnames):
+    """
+    Parameters
+    ----------
+    detpath : str
+        Path to detections. detpath.format(classname) should produce the detection results file.
+
+    imagenames : str
+    
+    classnames : str
+
+    """
     output_det = {x:[] for x in classnames}
 
     # read dets
@@ -248,33 +270,23 @@ def readdet(detpath, imagenames, classnames):
 
     return output_det
 
-def main():
-    """ 
-      PredictionDir: hw2_train_val/val1500/labelTxt_hbb_pred/
-      AnnotationDir: hw2_train_val/val1500/labelTxt_hbb/
+def scan_map(detpath, annopath):
     """
-    # detpath   = hw2_train_val/val1500/labelTxt_hbb_pred/
-    # annopath  = hw2_train_val/val1500/labelTxt_hbb/
+    Top level function that does the PASCAL VOC evaluation.
 
-    detpath = os.path.join(sys.argv[1], '{:s}.txt')
-    annopath = os.path.join(sys.argv[2], '{:s}.txt')
-    imagenames = [x.split('.')[0] for x in os.listdir(sys.argv[2]) if x.endswith('.txt')]
+    Parameters
+    ----------
+    detpath : str
+        Path to detections. detpath.format(classname) should produce the detection results file.
 
-    '''
-    # read list of images
-    imagesetfile = sys.argv[3]
-    with open(imagesetfile, 'r') as f:
-        lines = f.readlines()
-    imagenames = [x.strip() for x in lines]
-    '''
-
-    classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-                'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', 'container-crane']
-
-    ##############################################
-    #classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-    #            'storage-tank',  'soccer-ball-field', 'harbor', 'swimming-pool']
-    ##############################################
+    annopath : str
+        Path to annotations. annopath.format(imagename) should be the xml annotations file.
+    """
+    imagenames = [x.split('.')[0] for x in os.listdir(annopath) if x.endswith('.txt')]
+    detpath = os.path.join(detpath, '{:s}.txt')
+    annopath = os.path.join(annopath, '{:s}.txt')
+    
+    classnames = utils.classnames
 
     det = readdet(detpath, imagenames, classnames)
     del_list = []
@@ -289,26 +301,53 @@ def main():
     for classname in classnames:
         print('classname:', classname)
         rec, prec, ap = voc_eval(det[classname],
-             annopath,
-             imagenames,
-             classname,
-             ovthresh=0.5,
-             use_07_metric=True)
+                                annopath,
+                                imagenames,
+                                classname,
+                                ovthresh=0.5,
+                                use_07_metric=True)
         map = map + ap
-        #print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
         print('ap: ', ap)
         classaps.append(ap)
 
-        ## uncomment to plot p-r curve for each category
-        # plt.figure(figsize=(8,4))
-        # plt.xlabel('recall')
-        # plt.ylabel('precision')
-        # plt.plot(rec, prec)
-        # plt.show()
     map = map/len(classnames)
+    print('mAP: ', map)
+
+    return classaps, map
+
+def main():    
+    detpath  = os.path.join(sys.argv[1], '{:s}.txt')
+    annopath = os.path.join(sys.argv[2], '{:s}.txt')
+    imagenames = [x.split('.')[0] for x in os.listdir(sys.argv[2]) if x.endswith('.txt')]
+
+    classnames = utils.classnames
+
+    det = readdet(detpath, imagenames, classnames)
+    print("det: {}".format(det))
+    del_list = []
+    for key in det:
+        if len(det[key]) == 0:
+            del_list.append(key)
+    
+    classaps = []
+    map = 0
+    for classname in classnames:
+        print('classname:', classname)
+        rec, prec, ap = voc_eval(det[classname],
+                                 annopath,
+                                 imagenames,
+                                 classname,
+                                 ovthresh=0.5,
+                                 use_07_metric=True)
+        map = map + ap
+        print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
+        # print('ap: ', ap)
+        classaps.append(ap)
+
+    map = map / len(classnames)
     print('map:', map)
-    #classaps = 100*np.array(classaps)
-    #print('classaps: ', classaps)
+    
+    return map
 
 if __name__ == '__main__':
     main()
