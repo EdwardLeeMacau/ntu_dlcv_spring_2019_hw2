@@ -102,9 +102,9 @@ class Yolov1_ResNet(nn.Module):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
 
-class VGG(nn.Module):
-    def __init__(self, features, output_size=1274, image_size=448):
-        super(VGG, self).__init__()
+class VGGYolo(nn.Module):
+    def __init__(self, features: nn.Module, output_size=1274, image_size=448):
+        super(VGGYolo, self).__init__()
         self.features = features
         self.image_size = image_size
 
@@ -113,14 +113,14 @@ class VGG(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout(0.5),
 
-            nn.Linear(4096, 1274)
+            nn.Linear(4096, 1274),
+            nn.Sigmoid()
         )
         self._initialize_weights()
 
     def forward(self, x):
         x = self.features(x).view(x.size(0), -1)
         x = self.yolo(x)
-        x = torch.sigmoid(x)
         x = x.view(-1, 7, 7, 26)
 
         return x
@@ -413,32 +413,38 @@ cfg = {
     'D2': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512]
 }
 
-def Yolov1_vgg16bn(pretrained=False, **kwargs):
+def Yolov1_vgg16bn(pretrained=False, **kwargs) -> VGGYolo:
     """
     VGG 16-layer model (configuration "D") with batch normalization
 
     Parameters
     ----------
     pretrained : bool
-        If True, returns a model pre-trained on ImageNet
+        If True, load backbone model which pre-trained on ImageNet.
 
-    Return
-    ------
-    yolo:
-        The prediction model YOLO.
+    **kwargs :
+        Options for initializing YOLO.
+
+    Returns
+    -------
+    model: nn.Module
+        The model instance.
     """
-    yolo = VGG(make_layers(cfg['D'], batch_norm=True), **kwargs)
+    model = VGGYolo(make_layers(cfg['D'], batch_norm=True), **kwargs)
 
     if pretrained:
         vgg_state_dict = model_zoo.load_url(model_urls['vgg16_bn'])
-        yolo_state_dict = yolo.state_dict()
-        for k in vgg_state_dict.keys():
-            if k in yolo_state_dict.keys() and k.startswith('features'):
-                yolo_state_dict[k] = vgg_state_dict[k]
 
-        yolo.load_state_dict(yolo_state_dict)
+        # Perform key-matching
+        model_state_dict = model.state_dict()
+        for key in vgg_state_dict.keys():
+            if key in model_state_dict.keys() and key.startswith('features'):
+                print(f"Load pre-trained parameters {key}")
+                model_state_dict[key] = vgg_state_dict[key]
 
-    return yolo
+        model.load_state_dict(model_state_dict)
+
+    return model
 
 def Yolov1_vgg16bn_Improve(pretrained=False, **kwargs):
     """
@@ -446,7 +452,7 @@ def Yolov1_vgg16bn_Improve(pretrained=False, **kwargs):
 
     Parameters
     ----------
-    pretrained : bool:
+    pretrained : bool
         If True, returns a model pre-trained on ImageNet
 
     Return

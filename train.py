@@ -3,18 +3,15 @@ import json
 import os
 from pprint import pprint
 
-import matplotlib.pyplot as plt
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
 import torchvision.transforms as transforms
 import yaml
-from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import dataset
-import evaluation
+from evaluation import scan_map
 import models
 import utils
 from dataset import labelEncoder
@@ -31,6 +28,9 @@ def train(model, criterion, optimizer, scheduler, train_loader, val_loader,
     val_loss_list   = []
     val_mean_aps    = []
     val_class_aps   = []
+
+    if not os.path.exists('./checkpoints'):
+        os.makedirs('./checkpoints', exist_ok=True)
 
     for epoch in range(start_epochs + 1, epochs + 1):
         model.train()
@@ -54,8 +54,7 @@ def train(model, criterion, optimizer, scheduler, train_loader, val_loader,
 
                 loop.set_postfix({'loss': loss.item()})
 
-        if scheduler:
-            scheduler.step()
+        scheduler.step()
 
         train_loss /= iteration
         val_loss = test_loss(model, criterion, val_loader, device)
@@ -123,7 +122,7 @@ def test_map(model, criterion, dataloader: DataLoader, device, grid_num: int):
         classNames = labelEncoder.inverse_transform(class_idx.type(torch.long).to("cpu"))
         export(boxes, classNames, probs, labelNames[0], out_path="output/labelTxt_hbb_pred")
 
-    classaps, mean_ap = evaluation.scan_map(
+    classaps, mean_ap = scan_map(
         detpath="output/labelTxt_hbb_pred/",
         annopath="hw2_train_val/val1500/labelTxt_hbb/"
     )
@@ -160,16 +159,18 @@ def main(args: argparse.Namespace):
 
     if args.command == "basic":
         model = models.Yolov1_vgg16bn(pretrained=True).to(device)
-        criterion = models.YoloLoss(7., 2., 5., 0.5, device).to(device)
+        criterion = models.YoloLoss(7., 2., args.lambda_coord, args.lambda_noobj, device).to(device)
         save_name = "Yolov1"
     elif args.command == "improve":
         model = models.Yolov1_vgg16bn_Improve(pretrained=True).to(device)
-        criterion = models.YoloLoss(14., 2., 5, 0.5, device).to(device)
+        criterion = models.YoloLoss(14., 2., args.lambda_coord, args.lambda_noobj, device).to(device)
         save_name = "Yolov1-Improve"
 
     start_epoch = 0
-    optimizer = optim.SGD(model.parameters(), **args.optimizer['params'])
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, **args.scheduler['params'])
+    for param in model.features.parameters():
+        param.requires_grad = False
+    optimizer = optim.SGD(model.yolo.parameters(), **args.optimizer['params'])
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, **args.scheduler['params'], verbose=True)
 
     if args.load:
         model, optimizer, start_epoch, scheduler = utils.loadCheckpoint(args.load, model, optimizer, scheduler)
@@ -185,7 +186,7 @@ if __name__ == "__main__":
     with open('params.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    for category in ('environment', 'model', 'train'):
+    for category in ('environment', 'loss', 'model', 'train'):
         for key, values in config[category].items():
             setattr(args, key, values)
 

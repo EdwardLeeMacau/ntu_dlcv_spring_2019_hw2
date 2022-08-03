@@ -24,12 +24,12 @@ def selectDevice():
 
     return device
 
-def saveCheckpoint(checkpoint_path, model, optimizer, scheduler: optim.lr_scheduler._LRScheduler, epoch):
+def saveCheckpoint(checkpoint_path: str, model, optimizer, scheduler: optim.lr_scheduler._LRScheduler, epoch):
     state = {
         'state_dict': model.state_dict(),
         'optimizer' : optimizer.state_dict(),
-        'epoch': epoch,
-        'scheduler': scheduler.state_dict()
+        # 'epoch': epoch,
+        # 'scheduler': scheduler.state_dict()
     }
     torch.save(state, checkpoint_path)
     print('model saved to %s' % checkpoint_path)

@@ -8,10 +8,15 @@ stages:
   train:
     cmd: python train.py
     deps:
+    - evaluation.py
+    - inference.py
+    - models.py
     - train.py
+    - utils.py
     - hw2_train_val
     params:
     - environment
+    - loss
     - model
     - train
     metrics:

@@ -1,5 +1,10 @@
 environment:
   workers: 4
+  seed: 20220803
+
+loss:
+  lambda_coord: 5
+  lambda_noobj: 0.5
 
 model:
   iou: 0.5
@@ -19,5 +24,5 @@ train:
   scheduler:
     type: 'MultiStepLR'
     params:
-      milestones: [75, 30, 30]
+      milestones: [75, 105, 135]
       gamma: 0.1
