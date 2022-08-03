@@ -15,7 +15,7 @@ import sys
 import os
 import numpy as np
 
-import utils
+import dataset
 
 def parse_gt(filename):
     objects = []
@@ -39,26 +39,26 @@ def parse_gt(filename):
             h = int(float(splitline[5])) - int(float(splitline[1]))
             object_struct['area'] = w * h
             objects.append(object_struct)
-            
+
     return objects
 
 def voc_ap(rec, prec, use_07_metric=False):
-    """     
+    """
     Compute VOC AP given precision and recall.
-    
+
     If **use_07_metric** is true, uses the VOC 07 11 point method.
 
     Parameters
     ----------
-    rec:  
+    rec:
         recall
-    
-    prec: 
+
+    prec:
         precsion
 
     Return
     ------
-    ap: 
+    ap:
         average_precision
     """
     if use_07_metric:
@@ -102,22 +102,22 @@ def voc_eval(detlist, annopath, imagenames, classname, ovthresh=0.5, use_07_metr
 
     imagesetfile :
         Text file containing the list of images, one image per line.
-    
-    classname : 
+
+    classname :
         Category name (duh)
-    
+
     ovthresh : float
         Overlap threshold (default = 0.5)
 
     use_07_metric : bool
         Whether to use VOC07's 11 point AP computation (default False)
-    
+
     Return
     ------
-    rec : 
+    rec :
 
     prec :
-    
+
     ap :
     """
 
@@ -250,7 +250,7 @@ def readdet(detpath, imagenames, classnames):
         Path to detections. detpath.format(classname) should produce the detection results file.
 
     imagenames : str
-    
+
     classnames : str
 
     """
@@ -285,8 +285,8 @@ def scan_map(detpath, annopath):
     imagenames = [x.split('.')[0] for x in os.listdir(annopath) if x.endswith('.txt')]
     detpath = os.path.join(detpath, '{:s}.txt')
     annopath = os.path.join(annopath, '{:s}.txt')
-    
-    classnames = utils.classnames
+
+    classnames = dataset.classnames
 
     det = readdet(detpath, imagenames, classnames)
     del_list = []
@@ -315,12 +315,12 @@ def scan_map(detpath, annopath):
 
     return classaps, map
 
-def main():    
+def main():
     detpath  = os.path.join(sys.argv[1], '{:s}.txt')
     annopath = os.path.join(sys.argv[2], '{:s}.txt')
     imagenames = [x.split('.')[0] for x in os.listdir(sys.argv[2]) if x.endswith('.txt')]
 
-    classnames = utils.classnames
+    classnames = dataset.classnames
 
     det = readdet(detpath, imagenames, classnames)
     print("det: {}".format(det))
@@ -328,7 +328,7 @@ def main():
     for key in det:
         if len(det[key]) == 0:
             del_list.append(key)
-    
+
     classaps = []
     map = 0
     for classname in classnames:
@@ -346,7 +346,7 @@ def main():
 
     map = map / len(classnames)
     print('map:', map)
-    
+
     return map
 
 if __name__ == '__main__':

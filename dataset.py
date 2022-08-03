@@ -6,8 +6,6 @@
 
 import os
 import random
-import sys
-import time
 
 import numpy as np
 import torch
@@ -19,14 +17,25 @@ from torch.utils.data import DataLoader, Dataset
 
 import utils
 
-__all__ = ['MyDataset']
+__all__ = ['AerialDataset']
 
-class MyDataset(Dataset):
-    classnames = utils.classnames
-    labelEncoder = utils.labelEncoder
-    oneHotEncoder = utils.oneHotEncoder
+classnames = [
+    'plane', 'baseball-diamond', 'bridge', 'ground-track-field',
+    'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
+    'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout',
+    'harbor', 'swimming-pool', 'helicopter', 'container-crane'
+]
 
-    def __init__(self, root, grid_num=7, bbox_num=2, class_num=16, train=True, transform=None):
+labelEncoder  = LabelEncoder().fit(classnames)
+oneHotEncoder = OneHotEncoder(sparse=False).fit(labelEncoder.transform(classnames).reshape(16, 1))
+
+# TODO: Separate data augmentation part as individual module
+class AerialDataset(Dataset):
+    classnames = classnames
+    labelEncoder = labelEncoder
+    oneHotEncoder = oneHotEncoder
+
+    def __init__(self, root: str, grid_num=7, bbox_num=2, class_num=16, train=True, transform=None):
         """ Save the imageNames and the labelNames. """
         self.filenames = []
         self.train     = train
@@ -43,41 +52,42 @@ class MyDataset(Dataset):
         for name in imageNames:
             imageName = os.path.join(image_folder, name)
             labelName = os.path.join(anno_folder, name.split(".")[0] + ".txt")
-            
+
             self.filenames.append((imageName, labelName))
-        
+
     def __len__(self):
         return len(self.filenames)
 
     def __getitem__(self, index):
         imageName, labelName = self.filenames[index]
-        
+
         image = Image.open(imageName)
         boxes, classIndexs = self.readtxt(labelName)
-        
+
         if self.train:
-            image = self.RandomAdjustHSV(image, 0.95, 1.05)
-            if random.random() < 0.5: image, boxes = self.HorizontalFlip(image, boxes)
-            if random.random() < 0.5: image, boxes = self.VerticalFlip(image, boxes)
-            
-        target = self.encoder(boxes, classIndexs, image.size)
+            if random.random() < 0.5:
+                image, boxes = self.HorizontalFlip(image, boxes)
+            if random.random() < 0.5:
+                image, boxes = self.VerticalFlip(image, boxes)
+
+        target = self.encode(boxes, classIndexs, image.size)
         target = torch.from_numpy(target)
-        
-        if self.transform: 
+
+        if self.transform:
             image = self.transform(image)
 
         return image, target, labelName
 
-    def encoder(self, boxes, classindex, image_size):
+    def encode(self, boxes, classindex, image_size):
         """
         Parameters
         ----------
         boxes : numpy.array
             [N, 4], contains [x1, y1, x2, y2] in integers
-        
+
         labels : numpy.array
             [N, self.class_num]
-        
+
         Return
         ------
         targets : numpy.array
@@ -91,14 +101,14 @@ class MyDataset(Dataset):
         cell_size = 1. / self.grid_num
         wh        = boxes[:, 2:] - boxes[:, :2]
         centerXY  = (boxes[:, 2:] + boxes[:, :2]) / 2
-       
+
         ij = (np.ceil(centerXY / cell_size) - 1).astype(int)
-        
+
         # Confidence
         for index, (i, j) in enumerate(ij):
             # print("Index: {}, i: {}, j: {}".format(index, i, j))
             target[j, i] = 0    # Reset as zero
-            
+
             target[j, i, 4] = 1
             target[j, i, 9] = 1
             target[j, i, classindex + 10] = 1
@@ -115,14 +125,14 @@ class MyDataset(Dataset):
         return target
 
     def readtxt(self, labelName):
-        """ 
-        Transfer the labels to the tensor. 
+        """
+        Transfer the labels to the tensor.
 
         Parameters
         ----------
         labelName: str
             the label textfile to open
-        
+
         Return
         ------
         target: np.array
@@ -134,33 +144,16 @@ class MyDataset(Dataset):
 
         classNames  = np.asarray(labels[:, 8])
         classIndexs = self.labelEncoder.transform(classNames)
-        
+
         boxes = np.asarray(labels[:, :8]).astype(np.float)
         boxes = np.concatenate((boxes[:, :2], boxes[:, 4:6]), axis=1)
 
         return boxes, classIndexs
 
-    def RandomAdjustHSV(self, img, min_f, max_f, prob=0.5):
-        """ Augmentation Method: Adjust HSV """
-        if random.random() < prob:
-            factor = random.uniform(min_f, max_f)
-            choice = random.randint(0, 3)
-            
-            if choice == 0:
-                img = ImageEnhance.Color(img).enhance(factor)            
-            elif choice == 1:
-                img = ImageEnhance.Brightness(img).enhance(factor)
-            elif choice == 2:
-                img = ImageEnhance.Contrast(img).enhance(factor)
-            elif choice == 3:
-                img = ImageEnhance.Sharpness(img).enhance(factor)
-
-        return img
-
     def HorizontalFlip(self, im, boxes):
         """ Augmentation Method: Horizontal Flip """
         im = im.transpose(Image.FLIP_LEFT_RIGHT)
-        h, w = im.size
+        _, w = im.size
         xmin = w - boxes[:, 2]
         xmax = w - boxes[:, 0]
         boxes[:, 0] = xmin
@@ -171,7 +164,7 @@ class MyDataset(Dataset):
     def VerticalFlip(self, im, boxes):
         """ Augmentation Method: Vertical Flip """
         im = im.transpose(Image.FLIP_TOP_BOTTOM)
-        h, w = im.size
+        h, _ = im.size
         ymin = h - boxes[:, 3]
         ymax = h - boxes[:, 1]
         boxes[:, 1] = ymin
@@ -205,9 +198,9 @@ class Testset(Dataset):
 
     def __getitem__(self, index):
         image = Image.open(self.filenames[index])
-        if self.transform: 
+        if self.transform:
             image = self.transform(image)
-        
+
         return image, self.filenames[index].split(".")[0]
 
 def main():

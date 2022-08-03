@@ -1,4 +1,5 @@
 import math
+from multiprocessing import reduction
 
 import torch
 import torch.nn as nn
@@ -16,10 +17,6 @@ model_urls = {
     'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
     'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
-}
-
-model_urls = {
-
 }
 
 class ResidualBlocks(nn.Module):
@@ -48,7 +45,7 @@ class ResidualBlocks(nn.Module):
         out = self.conv2(out)
         out = self.bn2(out)
         out = self.drop(out)
-        
+
         out += identity
         out = self.relu(out)
 
@@ -88,15 +85,15 @@ class Yolov1_ResNet(nn.Module):
         x = self.bn1(x)
         x = self.relu1(x)
         x = self.maxpool(x)
-        
+
         for block in self.ResidualBlocks:
             x = block(x)
-        
+
         x = x.view(x.size(0), -1)
         x = self.yolo(x)
         x = torch.sigmoid(x)
         x = x.view(-1, 7, 7, 26)
- 
+
         return x
 
     def _initialize_weights(self):
@@ -121,11 +118,11 @@ class VGG(nn.Module):
         self._initialize_weights()
 
     def forward(self, x):
-        x = self.features(x).view(x.size(0), -1)        
+        x = self.features(x).view(x.size(0), -1)
         x = self.yolo(x)
-        x = torch.sigmoid(x) 
+        x = torch.sigmoid(x)
         x = x.view(-1, 7, 7, 26)
-        
+
         return x
 
     def _initialize_weights(self):
@@ -164,9 +161,9 @@ class VGG_Improve(nn.Module):
         x = self.features(x)
         x = self.yolo(x)
         x = self.bn(x)
-        x = torch.sigmoid(x) 
+        x = torch.sigmoid(x)
         x = x.permute(0, 2, 3, 1)
-        
+
         return x
 
     def _initialize_weights(self):
@@ -176,6 +173,10 @@ class VGG_Improve(nn.Module):
                 m.bias.data.zero_()
 
 class YoloLoss(nn.Module):
+    """
+    Reference:
+    - Chinese-simplified: https://zhuanlan.zhihu.com/p/70387154
+    """
     def __init__(self, grid_num, bbox_num, lambda_coord, lambda_noobj, device):
         super(YoloLoss, self).__init__()
         self.grid_num = grid_num
@@ -227,18 +228,18 @@ class YoloLoss(nn.Module):
         area_1_1 = (tensor1[:, 2] - tensor1[:, 0]) * (tensor1[:, 3] - tensor1[:, 1])
         area_1_2 = (tensor1[:, 7] - tensor1[:, 5]) * (tensor1[:, 8] - tensor1[:, 6])
         area_1  = torch.cat((area_1_1.unsqueeze(1), area_1_2.unsqueeze(1)), dim=1).to(self.device)
-        
+
         area_2_1 = (tensor2[:, 2] - tensor2[:, 0]) * (tensor2[:, 3] - tensor2[:, 1])
         area_2_2 = (tensor2[:, 7] - tensor2[:, 5]) * (tensor2[:, 8] - tensor2[:, 6])
         area_2  = torch.cat((area_2_1.unsqueeze(1), area_2_2.unsqueeze(1)), dim=1).to(self.device)
-        
+
         iou = intersectionArea / (area_1 + area_2 - intersectionArea)
 
         return iou
 
     def xyhw_xyxy(self, tensor: torch.tensor):
         tensor_xy = torch.zeros_like(tensor)
-        
+
         tensor_xy[:,  :2] = tensor[:,  :2] / self.grid_num - 0.5 * tensor[:, 2:4]
         tensor_xy[:, 2:4] = tensor[:,  :2] / self.grid_num + 0.5 * tensor[:, 2:4]
         tensor_xy[:, 5:7] = tensor[:, 5:7] / self.grid_num - 0.5 * tensor[:, 7:9]
@@ -262,10 +263,10 @@ class YoloLoss(nn.Module):
         ----------
         output, target: torch.tensor
             [batchsize, 7, 7, 26]
-          
+
         Return
         ------
-        loss: 
+        loss:
             (...)
         """
         loss = 0
@@ -281,16 +282,16 @@ class YoloLoss(nn.Module):
         noobj_target  = target[noobj_mask].view(-1, 26).type(torch.float)
 
         """ Loss 1: Class_loss """
-        class_loss = F.mse_loss(coord_predict[:, 10:], coord_target[:, 10:], size_average=False)
+        class_loss = F.mse_loss(coord_predict[:, 10:], coord_target[:, 10:], reduction='sum')
 
         """ Loss 2: No_object_Loss """
-        no_object_loss = (F.mse_loss(noobj_predict[:, 4], noobj_target[:, 4], size_average=False)
-                         + F.mse_loss(noobj_predict[:, 9], noobj_target[:, 9], size_average=False))
+        no_object_loss = (F.mse_loss(noobj_predict[:, 4], noobj_target[:, 4], reduction='sum')
+                         + F.mse_loss(noobj_predict[:, 9], noobj_target[:, 9], reduction='sum'))
 
         # 2. Compute the loss of containing object
         boxes_predict = coord_predict[:, :10]       # Match "delta_xy" in dataset.py
         boxes_target  = coord_target[:, :10]        # Match "delta_xy" in dataset.py
-        
+
         boxes_predict_xy = self.xyhw_xyxy(boxes_predict)
         boxes_target_xy = self.xyhw_xyxy(boxes_target)
         iou = self.IoU(boxes_predict_xy, boxes_target_xy)
@@ -307,7 +308,7 @@ class YoloLoss(nn.Module):
         # print("max_index: {}".format(max_index.dtype))
 
         # Response Mask: the mask that notes the box need to calculate position loss.
-        response_mask = torch.zeros((iou_max.shape[0], 2), dtype=torch.uint8)
+        response_mask = torch.zeros((iou_max.shape[0], 2), dtype=torch.bool)
         response_mask[max_index, 1] = 1
         response_mask[min_index, 0] = 1
         # coord_response_mask = coord_response_mask.view(-1, 2)
@@ -335,20 +336,20 @@ class YoloLoss(nn.Module):
         # boxes_target_response = boxes_target[coord_response_mask].view(-1, 5)
 
         """ Class 3: Contain_loss """
-        response_loss = F.mse_loss(boxes_predict_response[:, 4], boxes_target_response[:, 4], size_average=False)
-        
+        response_loss = F.mse_loss(boxes_predict_response[:, 4], boxes_target_response[:, 4], reduction='sum')
+
         """ Class 4: Location_loss """
-        location_loss = (F.mse_loss(boxes_predict_response[:, :2], boxes_target_response[:, :2], size_average=False) + 
-                         F.mse_loss(torch.sqrt(boxes_predict_response[:, 2:4]), torch.sqrt(boxes_target_response[:, 2:4]), size_average=False))
-        
+        location_loss = (F.mse_loss(boxes_predict_response[:, :2], boxes_target_response[:, :2], reduction='sum') +
+                         F.mse_loss(torch.sqrt(boxes_predict_response[:, 2:4]), torch.sqrt(boxes_target_response[:, 2:4]), reduction='sum'))
+
         # 2.2 not response loss, set the gt of the confidence as 0
         boxes_predict_not_response = boxes_predict[not_response_mask]
         boxes_target_not_response  = boxes_target_iou[not_response_mask]
 
         # print("noobj_confidence_loss: {}".format(self.lambda_noobj * F.mse_loss(boxes_predict_not_response[:, 4], boxes_target_not_response[:, 4], size_average=False)))
         """ Class 5: Not_response_loss """
-        not_response_loss = F.mse_loss(boxes_predict_not_response[:, 4], boxes_target_not_response[:, 4], size_average=False)
-        
+        not_response_loss = F.mse_loss(boxes_predict_not_response[:, 4], boxes_target_not_response[:, 4], reduction='sum')
+
         # Output the normalized loss
         loss = self.lambda_coord * location_loss + class_loss + response_loss + self.lambda_noobj * (not_response_loss + no_object_loss)
         loss /= batch_size
@@ -360,7 +361,7 @@ def make_layers(cfg, batch_norm=False):
     Parameters
     ----------
     cfg: the sequence configuration with ints and chars.
-    
+
     batch_norm: provide batch normalization layer
 
     Return
@@ -375,23 +376,23 @@ def make_layers(cfg, batch_norm=False):
 
     for v in cfg:
         s = 1
-        
+
         # Only the first_flag should set stride = 2
         if (v == 64 and first_flag):
             s = 2
             first_flag = False
-        
+
         if v == 'M':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
-        
+
         else:
             conv2d = nn.Conv2d(in_channels, v, kernel_size=3, stride=s, padding=1)
-            
+
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
             else:
                 layers += [conv2d, nn.ReLU(inplace=True)]
-            
+
             in_channels = v
 
     return nn.Sequential(*layers)
@@ -415,15 +416,15 @@ cfg = {
 def Yolov1_vgg16bn(pretrained=False, **kwargs):
     """
     VGG 16-layer model (configuration "D") with batch normalization
-    
+
     Parameters
     ----------
     pretrained : bool
         If True, returns a model pre-trained on ImageNet
-        
+
     Return
     ------
-    yolo: 
+    yolo:
         The prediction model YOLO.
     """
     yolo = VGG(make_layers(cfg['D'], batch_norm=True), **kwargs)
@@ -434,20 +435,20 @@ def Yolov1_vgg16bn(pretrained=False, **kwargs):
         for k in vgg_state_dict.keys():
             if k in yolo_state_dict.keys() and k.startswith('features'):
                 yolo_state_dict[k] = vgg_state_dict[k]
-        
+
         yolo.load_state_dict(yolo_state_dict)
-    
+
     return yolo
 
 def Yolov1_vgg16bn_Improve(pretrained=False, **kwargs):
     """
     VGG 16-layer model (configuration "D") with batch normalization
-    
+
     Parameters
     ----------
-    pretrained : bool: 
+    pretrained : bool:
         If True, returns a model pre-trained on ImageNet
-            
+
     Return
     ------
     yolo: nn.Module
@@ -463,7 +464,7 @@ def Yolov1_vgg16bn_Improve(pretrained=False, **kwargs):
     for k in vgg_state_dict.keys():
         if k in yolo_state_dict.keys() and k.startswith('features'):
             yolo_state_dict[k] = vgg_state_dict[k]
-    
+
     yolo.load_state_dict(yolo_state_dict)
-    
+
     return yolo

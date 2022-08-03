@@ -1,9 +1,3 @@
-"""
-  Filename    [ statistics.py ]
-  PackageName [ DLCVSpring2019 - YOLOv1 ]
-  Synposis    [ Statistic Information of dataset ]
-"""
-
 import os
 from collections import Counter
 
@@ -12,15 +6,11 @@ import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
 
-import dataset
-import models
-import predict
-import utils
 from visualize_bbox import visualize
 
 
 def draw_bbox():
-    """ Draw the boundary box with the textfile message"""    
+    """ Draw the boundary box with the textfile message"""
     for img in ("0076", "0086", "0907"):
         imgpath = os.path.join("hw2_train_val", "val1500", "images", img + ".jpg")
         detpath = os.path.join("hw2_train_val", "val1500", "labelTxt_hbb_pred", img + ".txt")
@@ -30,7 +20,7 @@ def draw_bbox():
 
 # TODO: Rewrite the function using textReader
 def count_class(detpath):
-    """ 
+    """
     Count the number of bbox for each categories in dataset
 
     Parameters
@@ -55,7 +45,7 @@ def count_class(detpath):
             # Instance Counter
             classNames  = np.asarray(labels[:, 8])
             counter.update(classNames)
-            
+
             # TODO: Size Statistics
             boxes = np.asarray(labels[:, :8]).astype(np.float)
             boxes = np.concatenate((boxes[:, :2], boxes[:, 4:6]), axis=1)

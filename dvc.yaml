@@ -1,0 +1,20 @@
+stages:
+  get_dataset:
+    cmd: sh ./get_dataset.sh
+    deps:
+    - get_dataset.sh
+    outs:
+    - hw2_train_val
+  train:
+    cmd: python train.py
+    deps:
+    - train.py
+    - hw2_train_val
+    params:
+    - environment
+    - model
+    - train
+    metrics:
+    - metrics.json
+    outs:
+    - output

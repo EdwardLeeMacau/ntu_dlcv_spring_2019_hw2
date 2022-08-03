@@ -1,0 +1,23 @@
+environment:
+  workers: 4
+
+model:
+  iou: 0.5
+  prob: 0.1
+  grid: 7
+
+train:
+  epochs: 135
+  batch_size: 32
+  augmentation: true
+  optimizer:
+    type: 'sgd'
+    params:
+      lr: 1.e-3
+      momentum: 0.9
+      weight_decay: 5.e-4
+  scheduler:
+    type: 'MultiStepLR'
+    params:
+      milestones: [75, 30, 30]
+      gamma: 0.1
